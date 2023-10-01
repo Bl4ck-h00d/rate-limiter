@@ -4,13 +4,18 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"rate-limiter/limiters"
 )
 
 func main() {
 	// Router
 	mux := http.NewServeMux()
+	go limiters.RefillTokenBuckets()
+	go limiters.Ticker()
 
-	mux.HandleFunc("/limited", handleLimited)
+	mux.Handle("/limited", limiters.TokenBucketMiddleware(http.HandlerFunc(handleLimited)))
+	mux.Handle("/limited-window", limiters.FixedWindowMiddleware(http.HandlerFunc(handleLimited)))
+
 	mux.HandleFunc("/unlimited", handleDefault)
 
 	log.Print("Listening...")
@@ -18,10 +23,8 @@ func main() {
 }
 
 func handleLimited(w http.ResponseWriter, req *http.Request) {
-	// TODO: rate limiter
-	w.Header().Set("Status", "200")
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode("Limited, don't over use me!")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode("Limited use only")
 }
 
 func handleDefault(w http.ResponseWriter, req *http.Request) {
